@@ -1,7 +1,9 @@
 {
     "words": [
+        "actix",
         "chrono",
         "rustls",
+        "serde",
         "sqlx"
     ]
 }

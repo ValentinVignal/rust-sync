@@ -20,7 +20,12 @@ async fn seed() -> impl Responder {
 
 #[post("/drop")]
 async fn drop() -> impl Responder {
-    HttpResponse::Ok()
+    log::debug!("Drop request");
+    let result = requests::drop::drop().await;
+    match result {
+        Ok(_) => HttpResponse::Ok().finish(),
+        Err(e) => HttpResponse::InternalServerError().body(format!("Error: {}", e)),
+    }
 }
 
 #[get("/sync")]

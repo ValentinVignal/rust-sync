@@ -2,7 +2,9 @@
     "words": [
         "actix",
         "chrono",
+        "fakeit",
         "rustls",
+        "schemaname",
         "serde",
         "sqlx"
     ]

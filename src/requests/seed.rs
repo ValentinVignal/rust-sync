@@ -1,5 +1,8 @@
 use fakeit::{self, color, words};
 use nanoid::nanoid;
+use rand::seq::SliceRandom;
+
+use serde_json::{json, Value};
 use sqlx::{postgres::PgPoolOptions, Pool, Postgres};
 
 struct Counts {
@@ -31,6 +34,32 @@ pub async fn seed() -> Result<(), sqlx::Error> {
             .bind(nanoid!())
             .bind(words::word())
             .bind(color::safe())
+            .execute(&pool)
+            .await?;
+    }
+
+    let project_ids = sqlx::query_as::<_, (String,)>("SELECT id FROM project")
+        .fetch_all(&pool)
+        .await?
+        .into_iter()
+        .map(|(row,)| row)
+        .collect::<Vec<String>>();
+
+    let field_ids: Vec<&str> = "0123456789abcdefghijklmnopqrstuvwxyz"
+        .split("")
+        .collect::<Vec<&str>>();
+
+    for _ in 0..COUNTS.forms {
+        let mut data = json!({});
+        for id in field_ids.iter() {
+            data[id] = Value::String(words::sentence(10));
+        }
+
+        sqlx::query(r#"INSERT INTO form (id, name, "projectID", data) VALUES ($1, $2, $3, $4)"#)
+            .bind(nanoid!())
+            .bind(words::word())
+            .bind(project_ids.choose(&mut rand::thread_rng()))
+            .bind(data)
             .execute(&pool)
             .await?;
     }

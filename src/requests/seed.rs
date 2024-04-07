@@ -19,6 +19,8 @@ const COUNTS: Counts = Counts {
     form_to_task: 10_000,
 };
 
+const BATCH_SIZE: i32 = 100;
+
 pub async fn seed() -> Result<(), sqlx::Error> {
     let pool = PgPoolOptions::new()
         .max_connections(5)
@@ -29,11 +31,20 @@ pub async fn seed() -> Result<(), sqlx::Error> {
     log::debug!("Seeding database...");
     create_database(&pool).await?;
 
-    for _ in 0..COUNTS.projects {
-        sqlx::query(r#"INSERT INTO project (id, name, code) VALUES ($1, $2, $3)"#)
-            .bind(nanoid!())
-            .bind(words::word())
-            .bind(color::safe())
+    for _ in 0..COUNTS.projects / BATCH_SIZE {
+        let mut project_ids: Vec<String> = Vec::new();
+        let mut project_names: Vec<String> = Vec::new();
+        let mut project_codes: Vec<String> = Vec::new();
+        for _ in 0..BATCH_SIZE {
+            project_ids.push(nanoid!());
+            project_names.push(words::word());
+            project_codes.push(color::safe());
+        }
+
+        sqlx::query(r#"INSERT INTO project (id, name, code) SELECT * FROM UNNEST($1::text[], $2::text[], $3::text[])"#)
+            .bind(&project_ids[..])
+            .bind(&project_names[..])
+            .bind(&project_codes[..])
             .execute(&pool)
             .await?;
     }
@@ -49,17 +60,27 @@ pub async fn seed() -> Result<(), sqlx::Error> {
         .split("")
         .collect::<Vec<&str>>();
 
-    for _ in 0..COUNTS.forms {
-        let mut data = json!({});
-        for id in field_ids.iter() {
-            data[id] = Value::String(words::sentence(10));
+    for _ in 0..COUNTS.forms / BATCH_SIZE {
+        let mut form_ids: Vec<String> = Vec::new();
+        let mut form_names: Vec<String> = Vec::new();
+        let mut form_project_ids: Vec<String> = Vec::new();
+        let mut form_data: Vec<Value> = Vec::new();
+        for _ in 0..BATCH_SIZE {
+            form_ids.push(nanoid!());
+            form_names.push(words::word());
+            form_project_ids.push(project_ids.choose(&mut rand::thread_rng()).unwrap().clone());
+            let mut data = json!({});
+            for id in field_ids.iter() {
+                data[id] = Value::String(words::sentence(10));
+            }
+            form_data.push(data);
         }
 
-        sqlx::query(r#"INSERT INTO form (id, name, "projectID", data) VALUES ($1, $2, $3, $4)"#)
-            .bind(nanoid!())
-            .bind(words::word())
-            .bind(project_ids.choose(&mut rand::thread_rng()))
-            .bind(data)
+        sqlx::query(r#"INSERT INTO form (id, name, "projectID", data) SELECT * FROM UNNEST($1::text[], $2::text[], $3::text[], $4::jsonb[])"#)
+            .bind(&form_ids[..])
+            .bind(&form_names[..])
+            .bind(&form_project_ids[..])
+            .bind(&form_data[..])
             .execute(&pool)
             .await?;
     }

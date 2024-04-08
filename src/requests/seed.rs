@@ -1,9 +1,10 @@
-use fakeit::{self, color, words};
+use fakeit::{self, color, datetime, generator, hipster, password, words};
 use nanoid::nanoid;
 use rand::seq::SliceRandom;
 
 use serde_json::{json, Value};
 use sqlx::{postgres::PgPoolOptions, Pool, Postgres};
+// cspell:ignore unnest, tablename, datetime
 
 struct Counts {
     projects: i32,
@@ -65,22 +66,51 @@ pub async fn seed() -> Result<(), sqlx::Error> {
         let mut form_names: Vec<String> = Vec::new();
         let mut form_project_ids: Vec<String> = Vec::new();
         let mut form_data: Vec<Value> = Vec::new();
+        let mut form_updated_ats: Vec<i64> = Vec::new();
         for _ in 0..BATCH_SIZE {
             form_ids.push(nanoid!());
-            form_names.push(words::word());
+            form_names.push(password::generate(true, true, false, 10));
             form_project_ids.push(project_ids.choose(&mut rand::thread_rng()).unwrap().clone());
             let mut data = json!({});
             for id in field_ids.iter() {
                 data[id] = Value::String(words::sentence(10));
             }
             form_data.push(data);
+            form_updated_ats.push(datetime::date().secs * 1000);
         }
 
-        sqlx::query(r#"INSERT INTO form (id, name, "projectID", data) SELECT * FROM UNNEST($1::text[], $2::text[], $3::text[], $4::jsonb[])"#)
+        sqlx::query(r#"INSERT INTO form (id, name, "projectID", data, "updatedAt") SELECT * FROM UNNEST($1::text[], $2::text[], $3::text[], $4::jsonb[], $5::bigint[])"#)
             .bind(&form_ids[..])
             .bind(&form_names[..])
             .bind(&form_project_ids[..])
             .bind(&form_data[..])
+            .bind(&form_updated_ats[..])
+            .execute(&pool)
+            .await?;
+    }
+
+    for _ in 0..COUNTS.tasks / BATCH_SIZE {
+        let mut task_ids: Vec<String> = Vec::new();
+        let mut task_names: Vec<String> = Vec::new();
+        let mut task_project_ids: Vec<String> = Vec::new();
+        let mut task_descriptions: Vec<String> = Vec::new();
+        let mut task_updated_ats: Vec<i64> = Vec::new();
+        for _ in 0..BATCH_SIZE {
+            task_ids.push(nanoid!());
+            task_names.push(generator::generate(
+                "{hacker.verb} {hacker.noun}".to_string(),
+            ));
+            task_project_ids.push(project_ids.choose(&mut rand::thread_rng()).unwrap().clone());
+            task_descriptions.push(hipster::paragraph(3, 4, 40, " ".to_string()));
+            task_updated_ats.push(datetime::date().secs * 1000);
+        }
+
+        sqlx::query(r#"INSERT INTO task (id, name, "projectID", description, "updatedAt") SELECT * FROM UNNEST($1::text[], $2::text[], $3::text[], $4::text[], $5::bigint[])"#)
+            .bind(&task_ids[..])
+            .bind(&task_names[..])
+            .bind(&task_project_ids[..])
+            .bind(&task_descriptions[..])
+            .bind(&task_updated_ats[..])
             .execute(&pool)
             .await?;
     }
@@ -101,6 +131,7 @@ async fn create_database(pool: &Pool<Postgres>) -> Result<(), sqlx::Error> {
             r#"CREATE TABLE "form_projects_project" ("formId" character varying NOT NULL, "projectId" character varying NOT NULL, CONSTRAINT "PK_0db033acf146ce2e7f99433877a" PRIMARY KEY ("formId", "projectId"))"#,
             r#"CREATE INDEX "IDX_bc419c142f5336f4f3c4849788" ON "form_projects_project" ("formId") "#,
             r#"CREATE INDEX "IDX_99033b0d627d82d697e1b3b08b" ON "form_projects_project" ("projectId") "#,
+            // cspell: disable-next-line
             r#"ALTER TABLE "task" ADD CONSTRAINT "FK_464e1e9f04be8ced7e4e878fbcf" FOREIGN KEY ("projectID") REFERENCES "project"("id") ON DELETE NO ACTION ON UPDATE NO ACTION"#,
             r#"ALTER TABLE "forms_tasks" ADD CONSTRAINT "FK_f3ed34ef693480eda462df17b7b" FOREIGN KEY ("formID") REFERENCES "form"("id") ON DELETE CASCADE ON UPDATE NO ACTION"#,
             r#"ALTER TABLE "forms_tasks" ADD CONSTRAINT "FK_0bc7355812c3784dd05b38e13f6" FOREIGN KEY ("taskID") REFERENCES "task"("id") ON DELETE CASCADE ON UPDATE NO ACTION"#,

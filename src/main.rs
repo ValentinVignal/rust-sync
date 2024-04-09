@@ -30,7 +30,12 @@ async fn drop() -> impl Responder {
 
 #[get("/sync")]
 async fn sync() -> impl Responder {
-    HttpResponse::Ok()
+    log::debug!("Sync request");
+    let result = requests::sync::sync().await;
+    match result {
+        Ok(_) => HttpResponse::Ok().finish(),
+        Err(e) => HttpResponse::InternalServerError().body(format!("Error: {}", e)),
+    }
 }
 
 #[actix_web::main]

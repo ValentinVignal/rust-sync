@@ -115,6 +115,36 @@ pub async fn seed() -> Result<(), sqlx::Error> {
             .await?;
     }
 
+    let task_ids = sqlx::query_as::<_, (String,)>("SELECT id FROM task")
+        .fetch_all(&pool)
+        .await?
+        .into_iter()
+        .map(|(row,)| row)
+        .collect::<Vec<String>>();
+    let form_ids = sqlx::query_as::<_, (String,)>("SELECT id FROM form")
+        .fetch_all(&pool)
+        .await?
+        .into_iter()
+        .map(|(row,)| row)
+        .collect::<Vec<String>>();
+
+    for _ in 0..COUNTS.form_to_task / BATCH_SIZE {
+        let mut form_ids_batch = Vec::<String>::new();
+        let mut task_ids_batch = Vec::<String>::new();
+        let mut updated_ats = Vec::<i64>::new();
+        for _ in 0..BATCH_SIZE {
+            form_ids_batch.push(form_ids.choose(&mut rand::thread_rng()).unwrap().clone());
+            task_ids_batch.push(task_ids.choose(&mut rand::thread_rng()).unwrap().clone());
+            updated_ats.push(datetime::date().secs * 1000);
+        }
+        sqlx::query(r#"INSERT INTO forms_tasks ("formID", "taskID", "updatedAt") SELECT * FROM UNNEST($1::text[], $2::text[], $3::bigint[])"#)
+            .bind(&form_ids_batch[..])
+            .bind(&task_ids_batch[..])
+            .bind(&updated_ats[..])
+            .execute(&pool)
+            .await?;
+    }
+
     log::debug!("Done seeding");
     Ok(())
 }

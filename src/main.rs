@@ -1,4 +1,6 @@
-use actix_web::{get, post, App, HttpResponse, HttpServer, Responder};
+use std::error::Error;
+
+use actix_web::{get, post, web, App, HttpResponse, HttpServer, Responder};
 
 mod requests;
 
@@ -29,13 +31,10 @@ async fn drop() -> impl Responder {
 }
 
 #[get("/sync")]
-async fn sync() -> impl Responder {
+async fn sync() -> Result<impl Responder, Box<dyn Error>> {
     log::debug!("Sync request");
-    let result = requests::sync::sync().await;
-    match result {
-        Ok(_) => HttpResponse::Ok().finish(),
-        Err(e) => HttpResponse::InternalServerError().body(format!("Error: {}", e)),
-    }
+    let result = requests::sync::sync().await?;
+    Ok(web::Json(result))
 }
 
 #[actix_web::main]

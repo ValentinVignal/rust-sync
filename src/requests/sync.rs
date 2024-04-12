@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use sqlx::postgres::PgPoolOptions;
 
 #[derive(Serialize, Deserialize)]
@@ -9,8 +10,17 @@ pub struct SyncedProject {
 }
 
 #[derive(Serialize, Deserialize)]
+pub struct SyncForms {
+    pub id: String,
+    pub name: String,
+    pub project_id: String,
+    pub data: Value,
+}
+
+#[derive(Serialize, Deserialize)]
 pub struct SyncData {
     pub projects: Vec<SyncedProject>,
+    pub forms: Vec<SyncForms>,
 }
 
 pub async fn sync() -> Result<SyncData, sqlx::Error> {
@@ -24,7 +34,11 @@ pub async fn sync() -> Result<SyncData, sqlx::Error> {
         r#"SELECT id, name, code FROM project WHERE "deletedAt" IS NULL ORDER BY "updatedAt" DESC LIMIT 1000"#
     ).fetch_all(&pool).await?;
 
+    let forms = sqlx::query_as!(SyncForms,
+        r#"SELECT id, name, "projectID" as project_id, data FROM form WHERE "deletedAt" IS NULL ORDER BY "updatedAt" DESC LIMIT 1000"#
+    ).fetch_all(&pool).await?;
 
 
-    Ok(SyncData { projects })
+
+    Ok(SyncData { projects, forms })
 }

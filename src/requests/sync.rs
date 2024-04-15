@@ -15,6 +15,7 @@ pub struct SyncedForm {
     pub name: String,
     pub project_id: String,
     pub data: Value,
+    pub task_ids: Option<Vec<String>>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -23,6 +24,7 @@ pub struct SyncedTask {
     pub name: String,
     pub description: Option<String>,
     pub project_id: String,
+    pub form_ids: Option<Vec<String>>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -44,12 +46,20 @@ pub async fn sync() -> Result<SyncData, sqlx::Error> {
     ).fetch_all(&pool).await?;
 
     let forms = sqlx::query_as!(SyncedForm,
-        r#"SELECT id, name, "projectID" as project_id, data FROM form WHERE "deletedAt" IS NULL ORDER BY "updatedAt" DESC LIMIT 1000"#
+        r###"SELECT form.id, form.name, form."projectID" as project_id, form.data, array_remove(array_agg(forms_tasks."taskID"), NULL) as task_ids FROM form
+        LEFT JOIN forms_tasks ON form.id = forms_tasks."formID"
+        WHERE form."deletedAt" IS NULL
+        GROUP BY form.id
+        ORDER BY form."updatedAt" DESC LIMIT 1000;"###
     ).fetch_all(&pool).await?;
 
 
     let tasks = sqlx::query_as!(SyncedTask,
-        r#"SELECT id, name, description, "projectID" as project_id FROM task WHERE "deletedAt" IS NULL ORDER BY "updatedAt" DESC LIMIT 1000"#
+        r###"SELECT task.id, task.name, task.description, task."projectID" as project_id, array_remove(array_agg(forms_tasks."formID"), NULL) as form_ids FROM task
+        LEFT JOIN forms_tasks ON task.id = forms_tasks."taskID"
+        WHERE task."deletedAt" IS NULL
+        GROUP BY task.id
+        ORDER BY task."updatedAt" DESC LIMIT 1000"###
     ).fetch_all(&pool).await?;
 
 
